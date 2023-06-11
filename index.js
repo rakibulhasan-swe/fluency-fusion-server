@@ -58,8 +58,47 @@ async function run() {
       res.send({ token });
     });
 
+    // verify admin middleware. Use this after verifyJWT
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await allUser.findOne(query);
+      if (user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbidded access" });
+      }
+      next();
+    };
+
+    // admin layers checking
+    app.get("/users/admin/:email", verifyJwt, async (req, res) => {
+      const email = req.params.email;
+
+      if (req.decoded.email !== email) {
+        return res.send({ admin: false });
+      }
+      const query = { email: email };
+      const user = await allUser.findOne(query);
+      const result = { admin: user?.role === "admin" };
+      res.send(result);
+    });
+
+    // instructor layers checking
+    app.get("/users/instructor/:email", verifyJwt, async (req, res) => {
+      const email = req.params.email;
+
+      if (req.decoded.email !== email) {
+        return res.send({ instructor: false });
+      }
+      const query = { email: email };
+      const user = await allUser.findOne(query);
+      const result = { instructor: user?.role === "instructor" };
+      res.send(result);
+    });
+
     // users related api
-    app.get("/users", verifyJwt, async (req, res) => {
+    app.get("/users", verifyJwt, verifyAdmin, async (req, res) => {
       const result = await allUser.find().toArray();
       res.send(result);
     });
@@ -141,6 +180,43 @@ async function run() {
       const filter = { _id: new ObjectId(id) };
       const updateDoc = {
         $set: req.body,
+      };
+      const result = await allCourse.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+    // feedback to course
+    app.patch("/courses/feedback/:id", async (req, res) => {
+      const id = req?.params?.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          feedback: req?.body?.feedback,
+        },
+      };
+      const result = await allCourse.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    // make course approved
+    app.patch("/courses/approve/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: "approved",
+        },
+      };
+      const result = await allCourse.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+    // make course denied
+    app.patch("/courses/denied/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: "denied",
+        },
       };
       const result = await allCourse.updateOne(filter, updateDoc);
       res.send(result);
