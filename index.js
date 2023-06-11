@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
@@ -23,10 +23,36 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
+    // database collection
+    const allUser = client.db("fluencyFusion").collection("users");
+
+    // users related api
+    app.get("/users", async (req, res) => {
+      const result = await allUser.find().toArray();
+      res.send(result);
+    });
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      // checking existing user or not
+      const query = { email: user?.email };
+      const existingUser = await allUser.findOne(query);
+      if (existingUser) {
+        return res.send({ message: "User already exist" });
+      }
+      const result = await allUser.insertOne(user);
+      res.send(result);
+    });
+
+    app.delete("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await allUser.deleteOne(query);
+      res.send(result);
+    });
 
 
-
-
+    
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
