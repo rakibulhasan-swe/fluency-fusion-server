@@ -10,6 +10,27 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// verify jwt
+const verifyJwt = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res
+      .status(401)
+      .send({ error: true, message: "Unauthorized access" });
+  }
+  // bearer token
+  const token = authorization.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
+    if (err) {
+      return res
+        .status(403)
+        .send({ error: true, message: "Unauthorized access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
 const uri = `mongodb+srv://${process.env.DB_NAME}:${process.env.DB_PASS}@cluster0.njyko.mongodb.net/?retryWrites=true&w=majority`;
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -26,6 +47,7 @@ async function run() {
 
     // database collection
     const allUser = client.db("fluencyFusion").collection("users");
+    const allClass = client.db("fluencyFusion").collection("classes");
 
     // jwt token
     app.post("/jwt", (req, res) => {
@@ -37,7 +59,7 @@ async function run() {
     });
 
     // users related api
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyJwt, async (req, res) => {
       const result = await allUser.find().toArray();
       res.send(result);
     });
@@ -83,6 +105,13 @@ async function run() {
         },
       };
       const result = await allUser.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    // class/course related api
+    app.post("/classes", async (req, res) => {
+      const newClass = req.body;
+      const result = await allClass.insertOne(newClass);
       res.send(result);
     });
 
