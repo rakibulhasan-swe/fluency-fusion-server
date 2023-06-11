@@ -47,7 +47,7 @@ async function run() {
 
     // database collection
     const allUser = client.db("fluencyFusion").collection("users");
-    const allClass = client.db("fluencyFusion").collection("classes");
+    const allCourse = client.db("fluencyFusion").collection("courses");
 
     // jwt token
     app.post("/jwt", (req, res) => {
@@ -109,9 +109,30 @@ async function run() {
     });
 
     // class/course related api
-    app.post("/classes", async (req, res) => {
+    app.get("/courses", async (req, res) => {
+      const result = await allCourse.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/coursesByEmail", verifyJwt, async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        res.send([]);
+      }
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbiddedn access" });
+      }
+      const query = { instructorEmail: email };
+      const result = await allCourse.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/courses", async (req, res) => {
       const newClass = req.body;
-      const result = await allClass.insertOne(newClass);
+      const result = await allCourse.insertOne(newClass);
       res.send(result);
     });
 
