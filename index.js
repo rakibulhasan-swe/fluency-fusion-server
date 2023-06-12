@@ -4,6 +4,7 @@ const app = express();
 const cors = require("cors");
 var jwt = require("jsonwebtoken");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.PAYMENT_SK);
 const port = process.env.PORT || 5000;
 
 // middlewares
@@ -48,6 +49,13 @@ async function run() {
     // database collection
     const allUser = client.db("fluencyFusion").collection("users");
     const allCourse = client.db("fluencyFusion").collection("courses");
+    const allEnrolledCourse = client
+      .db("fluencyFusion")
+      .collection("enrolledCourses");
+    const allPurchasedCourse = client
+      .db("fluencyFusion")
+      .collection("purchasedCourse");
+    const allPayment = client.db("fluencyFusion").collection("payments");
 
     // jwt token
     app.post("/jwt", (req, res) => {
@@ -71,7 +79,7 @@ async function run() {
       next();
     };
 
-    // admin layers checking
+    // admin checking
     app.get("/users/admin/:email", verifyJwt, async (req, res) => {
       const email = req.params.email;
 
@@ -84,7 +92,7 @@ async function run() {
       res.send(result);
     });
 
-    // instructor layers checking
+    // instructor checking
     app.get("/users/instructor/:email", verifyJwt, async (req, res) => {
       const email = req.params.email;
 
@@ -220,6 +228,77 @@ async function run() {
       };
       const result = await allCourse.updateOne(filter, updateDoc);
       res.send(result);
+    });
+
+    // all enrolledCorses related api -
+    app.get("/enrolled", verifyJwt, async (req, res) => {
+      const email = req?.query?.email;
+      if (!email) {
+        res.send([]);
+      }
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbiddedn access" });
+      }
+      const query = { userEmail: email };
+      const result = await allEnrolledCourse.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/enrolled", async (req, res) => {
+      const newEnrolledCourse = req.body;
+      const result = await allEnrolledCourse.insertOne(newEnrolledCourse);
+      res.send(result);
+    });
+
+    app.delete("/enrolled/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await allEnrolledCourse.deleteOne({ _id: id });
+      res.send(result);
+    });
+
+    //
+    //
+    //
+    //
+    // create payment intent
+    app.post("/create-payment-intent", verifyJwt, async (req, res) => {
+      const { price } = req.body;
+      const amount = price * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    // payment related api
+    app.post("/payments", verifyJwt, async (req, res) => {
+      const payment = req.body;
+      const result = await allPayment.insertOne(payment);
+
+      // available seat decreased by 1
+      const filter = { _id: payment?._id };
+      const updateDoc = {
+        $set: {
+          availableSeats: payment?.availableSeats - 1,
+        },
+      };
+      const updateResult = await allCourse.updateOne(filter, updateDoc);
+
+      // insert into purchased course
+      const insertResult = await allPurchasedCourse.insertOne(payment);
+
+      // delete from enrolled course
+      const deleteResult = await allEnrolledCourse.deleteOne({
+        _id: payment._id,
+      });
+      res.send({ result });
     });
 
     // Send a ping to confirm a successful connection
