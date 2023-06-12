@@ -111,6 +111,23 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/allInstructor", async (req, res) => {
+      const role = { role: "instructor" };
+      const result = await allUser.find(role).toArray();
+      res.send(result);
+    });
+
+    app.get("/popularInstructor", async (req, res) => {
+      const role = { role: "instructor" };
+      const result = await allUser.find(role).limit(6).toArray();
+      res.send(result);
+    });
+
+    app.get("/allAdminOrInstructor", async (req, res) => {
+      const result = await allUser.find().toArray();
+      res.send(result);
+    });
+
     app.post("/users", async (req, res) => {
       const user = req.body;
       // checking existing user or not
@@ -161,6 +178,21 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/popularCourses", async (req, res) => {
+      const result = await allCourse
+        .find({ status: "approved" })
+        .sort({ enrolledStudents: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+
+    app.get("/approvedCourses", async (req, res) => {
+      const sort = { status: "approved" };
+      const result = await allCourse.find(sort).toArray();
+      res.send(result);
+    });
+
     app.get("/coursesByEmail", verifyJwt, async (req, res) => {
       const email = req.query.email;
       if (!email) {
@@ -174,6 +206,13 @@ async function run() {
       }
       const query = { instructorEmail: email };
       const result = await allCourse.find(query).toArray();
+      res.send(result);
+    });
+
+    app.get("/courses/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await allCourse.findOne(filter);
       res.send(result);
     });
 
@@ -255,14 +294,28 @@ async function run() {
 
     app.delete("/enrolled/:id", async (req, res) => {
       const id = req.params.id;
-      const result = await allEnrolledCourse.deleteOne({ _id: id });
+      const query = { _id: new ObjectId(id) };
+      const result = await allEnrolledCourse.deleteOne(query);
       res.send(result);
     });
 
-    //
-    //
-    //
-    //
+    // purchased related api
+    app.get("/purchased", verifyJwt, async (req, res) => {
+      const email = req?.query?.email;
+      if (!email) {
+        res.send([]);
+      }
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbiddedn access" });
+      }
+      const query = { email: email };
+      const result = await allPurchasedCourse.find(query).toArray();
+      res.send(result);
+    });
+
     // create payment intent
     app.post("/create-payment-intent", verifyJwt, async (req, res) => {
       const { price } = req.body;
@@ -278,15 +331,37 @@ async function run() {
     });
 
     // payment related api
+    app.get("/payments", verifyJwt, async (req, res) => {
+      const email = req?.query?.email;
+      if (!email) {
+        res.send([]);
+      }
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbiddedn access" });
+      }
+      const query = { email: email };
+      const result = await allPayment.find(query).toArray();
+      res.send(result);
+    });
+
     app.post("/payments", verifyJwt, async (req, res) => {
       const payment = req.body;
       const result = await allPayment.insertOne(payment);
 
       // available seat decreased by 1
-      const filter = { _id: payment?._id };
+      const filter = { _id: new ObjectId(payment?.purchasedId) };
+      const singleCourse = await allCourse.findOne({
+        _id: new ObjectId(payment?.purchasedId),
+      });
+      const newSeats = singleCourse?.availableSeats - 1;
+      const enrolled = singleCourse?.enrolledStudents + 1;
       const updateDoc = {
         $set: {
-          availableSeats: payment?.availableSeats - 1,
+          availableSeats: newSeats,
+          enrolledStudents: enrolled,
         },
       };
       const updateResult = await allCourse.updateOne(filter, updateDoc);
@@ -296,7 +371,7 @@ async function run() {
 
       // delete from enrolled course
       const deleteResult = await allEnrolledCourse.deleteOne({
-        _id: payment._id,
+        courseId: payment?.purchasedId,
       });
       res.send({ result });
     });
